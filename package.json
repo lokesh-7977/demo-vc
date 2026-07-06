@@ -8,13 +8,6 @@
     "start": "node .output/server/index.mjs"
   },
   "packageManager": "pnpm@11.9.0",
-  "devEngines": {
-    "packageManager": {
-      "name": "pnpm",
-      "version": "^11.2.2",
-      "onFail": "download"
-    }
-  },
   "type": "module",
   "dependencies": {
     "@radix-ui/react-slot": "^1.3.0",
