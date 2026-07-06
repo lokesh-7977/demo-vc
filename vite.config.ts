@@ -9,7 +9,7 @@ export default defineConfig({
   },
   plugins: [
     tailwindcss(),
-    tanstackStart(), // MUST come before react()
+    tanstackStart({ spa: { enabled: true } }), // MUST come before react()
     viteReact(),
   ],
 })

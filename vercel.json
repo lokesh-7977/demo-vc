@@ -1,4 +1,6 @@
 {
-  "installCommand": "node -v && npx -y pnpm@11.9.0 install",
-  "buildCommand": "npx -y pnpm@11.9.0 build"
+  "installCommand": "npx -y pnpm@11.9.0 install",
+  "buildCommand": "npx -y pnpm@11.9.0 build",
+  "outputDirectory": "dist/client",
+  "rewrites": [{ "source": "/(.*)", "destination": "/_shell.html" }]
 }
