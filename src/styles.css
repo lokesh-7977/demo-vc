@@ -1,0 +1,246 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import '@xyflow/react/dist/style.css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* ── Lokvera design tokens ──────────────────────────────────────
+   Light is the default (B2B-friendly); `.dark` flips every
+   semantic token. Components only ever use semantic classes. */
+:root {
+  --radius: 0.625rem;
+
+  /* brand accents — identical in both themes */
+  --brand-blue: #4f7cff;
+  --brand-violet: #8b5cf6;
+  --brand-cyan: #16b8a6;
+
+  /* light surfaces */
+  --text-strong: #101733;
+  --text-soft: #4c5670;
+  --text-faint: #8a92ab;
+  --surface: rgb(16 23 51 / 3%);
+  --surface-strong: rgb(16 23 51 / 6%);
+  --line: rgb(16 23 51 / 10%);
+  --line-strong: rgb(16 23 51 / 18%);
+  --glass-shadow: 0 1px 2px rgb(16 23 51 / 4%), 0 8px 24px rgb(16 23 51 / 6%);
+
+  /* shadcn semantic tokens */
+  --background: #fbfcfe;
+  --foreground: #333d59;
+  --card: #ffffff;
+  --card-foreground: #333d59;
+  --popover: #ffffff;
+  --popover-foreground: #333d59;
+  --primary: var(--brand-blue);
+  --primary-foreground: #ffffff;
+  --secondary: rgb(16 23 51 / 5%);
+  --secondary-foreground: var(--text-strong);
+  --muted: rgb(16 23 51 / 4%);
+  --muted-foreground: var(--text-soft);
+  --accent: rgb(79 124 255 / 9%);
+  --accent-foreground: #2b4bcc;
+  --destructive: #dc4c4c;
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: rgb(79 124 255 / 45%);
+}
+
+.dark {
+  --brand-cyan: #38e1d0;
+
+  --text-strong: #f4f6ff;
+  --text-soft: #9aa3bd;
+  --text-faint: #5c6480;
+  --surface: rgb(255 255 255 / 3%);
+  --surface-strong: rgb(255 255 255 / 6%);
+  --line: rgb(255 255 255 / 8%);
+  --line-strong: rgb(255 255 255 / 16%);
+  --glass-shadow: inset 0 1px 0 rgb(255 255 255 / 4%), 0 8px 30px rgb(0 0 0 / 35%);
+
+  --background: #05060c;
+  --foreground: #c6ccdf;
+  --card: #0a0c16;
+  --card-foreground: #c6ccdf;
+  --popover: #0d1020;
+  --popover-foreground: #c6ccdf;
+  --primary: var(--brand-blue);
+  --primary-foreground: #f4f6ff;
+  --secondary: rgb(255 255 255 / 6%);
+  --secondary-foreground: var(--text-strong);
+  --muted: rgb(255 255 255 / 4%);
+  --muted-foreground: var(--text-soft);
+  --accent: rgb(79 124 255 / 12%);
+  --accent-foreground: #dfe6ff;
+  --destructive: #f26d6d;
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: rgb(79 124 255 / 55%);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-brand-blue: var(--brand-blue);
+  --color-brand-violet: var(--brand-violet);
+  --color-brand-cyan: var(--brand-cyan);
+  --color-text-strong: var(--text-strong);
+  --color-text-soft: var(--text-soft);
+  --color-text-faint: var(--text-faint);
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  /* CRM-grade type: Inter — the open standard closest to Salesforce Sans */
+  --font-display: 'Inter', 'Salesforce Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter', 'Salesforce Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    /* light: airy white gradient, never flat grey */
+    background-image: linear-gradient(
+      170deg,
+      #ffffff 0%,
+      #fbfcfe 40%,
+      #f3f6fd 100%
+    );
+    background-attachment: fixed;
+    min-height: 100svh;
+  }
+  .dark body {
+    background-image: linear-gradient(170deg, #07080f 0%, #05060c 55%, #080a18 100%);
+  }
+  /* ambient aurora — whisper-quiet in light, atmospheric in dark */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(700px 420px at 15% -10%, rgb(79 124 255 / 7%), transparent 60%),
+      radial-gradient(800px 520px at 95% 0%, rgb(139 92 246 / 6%), transparent 60%),
+      radial-gradient(600px 500px at 50% 115%, rgb(56 190 201 / 5%), transparent 60%);
+  }
+  .dark body::before {
+    background:
+      radial-gradient(600px 400px at 12% -10%, rgb(79 124 255 / 10%), transparent 60%),
+      radial-gradient(700px 500px at 95% 5%, rgb(139 92 246 / 8%), transparent 60%),
+      radial-gradient(500px 500px at 60% 110%, rgb(56 225 208 / 5%), transparent 60%);
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@utility font-display {
+  font-family: var(--font-display);
+}
+
+@utility glass {
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: var(--glass-shadow);
+}
+
+@utility glass-hover {
+  transition: border-color 180ms ease, background 180ms ease;
+  &:hover {
+    background: var(--surface-strong);
+    border-color: var(--line-strong);
+  }
+}
+
+@utility text-gradient {
+  background: linear-gradient(100deg, var(--text-strong) 10%, var(--brand-blue) 60%, var(--brand-violet) 95%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility eyebrow {
+  font-family: var(--font-display);
+  font-size: 0.6875rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* ── waveform bars (live call) ─────────────────────────────────── */
+@keyframes wave {
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(1); }
+}
+.wave-bar {
+  animation: wave 1.1s ease-in-out infinite;
+  transform-origin: center;
+  background: linear-gradient(180deg, var(--brand-cyan), var(--brand-blue));
+}
+@media (prefers-reduced-motion: reduce) {
+  .wave-bar { animation: none; transform: scaleY(0.6); }
+  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+
+/* ── react flow theming (both modes via semantic vars) ─────────── */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-edge-stroke: var(--line-strong);
+  --xy-edge-stroke-selected: var(--brand-blue);
+  --xy-handle-background-color: var(--brand-blue);
+  --xy-handle-border-color: var(--card);
+  --xy-attribution-background-color: transparent;
+}
+.react-flow__node { font-family: var(--font-sans); }
+.react-flow__controls {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: none;
+}
+.react-flow__controls-button {
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  fill: var(--text-soft);
+}
+.react-flow__controls-button:hover { background: var(--surface-strong); }
+.react-flow__minimap {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
