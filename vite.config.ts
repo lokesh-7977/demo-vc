@@ -9,7 +9,7 @@ export default defineConfig({
   },
   plugins: [
     tailwindcss(),
-    tanstackStart({ target: 'vercel' }), // MUST come before react()
+    tanstackStart(), // MUST come before react()
     viteReact(),
   ],
 })
