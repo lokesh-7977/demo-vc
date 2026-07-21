@@ -4,80 +4,68 @@ import { Moon, Search, Sun } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useApp } from '@/stores/app-store'
+import { useContacts } from '@/lib/queries'
 import { useTheme } from '@/hooks/use-theme'
-import { fmtDateTime } from '@/lib/format'
+import { useDebounce } from '@/hooks/use-debounce'
 import { cn } from '@/lib/utils'
 
 /* Route → page heading shown on the left of the topbar. */
-const PAGE_TITLES: Record<string, { eyebrow: string; title: string }> = {
-  '/dashboard': { eyebrow: 'Overview', title: 'Dashboard' },
-  '/leads': { eyebrow: 'CRM', title: 'Leads' },
-  '/calls': { eyebrow: 'Telephony', title: 'Calls' },
-  '/builder': { eyebrow: 'Automation', title: 'Agents & Builder' },
-  '/numbers': { eyebrow: 'Telephony infrastructure', title: 'Numbers & Import' },
-  '/analytics': { eyebrow: 'Insights', title: 'Analytics' },
-  '/team': { eyebrow: 'People & access', title: 'Team' },
-  '/settings': { eyebrow: 'Workspace', title: 'Settings' },
+const PAGE_TITLES: Record<string, { title: string }> = {
+  '/dashboard': { title: 'Dashboard' },
+  '/leads': { title: 'Leads' },
+  '/calls': { title: 'Calls' },
+  '/builder': { title: 'Agents & Builder' },
+  '/numbers': { title: 'Numbers & Import' },
+  '/analytics': { title: 'Analytics' },
+  '/team': { title: 'Team' },
+  '/settings': { title: 'Settings' },
 }
 
 export function Topbar() {
-  const org = useApp((s) => s.org)
-  const leads = useApp((s) => s.leads)
-  const calls = useApp((s) => s.calls)
   const navigate = useNavigate()
   const { theme, toggle } = useTheme()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
 
-  const page = Object.entries(PAGE_TITLES).find(([p]) =>
-    pathname.startsWith(p),
-  )?.[1]
+  const page = Object.entries(PAGE_TITLES).find(([p]) => pathname.startsWith(p))?.[1]
+
+  // contact search only makes sense on the CRM pages
+  const showSearch = ['/leads', '/calls'].some((p) => pathname.startsWith(p))
 
   const [q, setQ] = useState('')
+  // debounce so we hit the contacts API once the user pauses, not per keystroke
+  const debouncedQ = useDebounce(q.trim(), 300)
+  const { data: contactsPage } = useContacts(
+    showSearch && debouncedQ.length >= 2 ? debouncedQ : undefined,
+  )
 
   const results = useMemo(() => {
-    if (q.trim().length < 2) return []
-    const needle = q.toLowerCase()
-    const leadHits = leads
-      .filter(
-        (l) => l.name.toLowerCase().includes(needle) || l.phone.includes(needle),
-      )
-      .slice(0, 5)
-      .map((l) => ({ id: l.id, label: l.name, sub: l.phone, kind: 'lead' as const }))
-    const callHits = calls
-      .filter((c) => c.summary.toLowerCase().includes(needle))
-      .slice(0, 3)
-      .map((c) => ({
-        id: c.id,
-        label: c.summary.slice(0, 60),
-        sub: fmtDateTime(c.date),
-        kind: 'call' as const,
-      }))
-    return [...leadHits, ...callHits]
-  }, [q, leads, calls])
+    if (debouncedQ.length < 2) return []
+    return (contactsPage?.items ?? []).slice(0, 6).map((c) => ({
+      id: c.id,
+      label: [c.firstName, c.lastName].filter(Boolean).join(' ') || c.phone,
+      sub: c.phone,
+    }))
+  }, [q, contactsPage])
 
   return (
-    <header className="relative z-20 flex h-14 items-center gap-4 border-b border-line bg-card/70 px-5 backdrop-blur-xl">
+    <header className="relative z-20 flex h-14 items-center gap-4 border-b border-line bg-card/80 px-5 shadow-sm shadow-black/5 backdrop-blur-xl dark:shadow-none">
       {/* page heading — left */}
       <div className="min-w-0">
         {page ? (
-          <>
-            <p className="eyebrow leading-none">{page.eyebrow}</p>
-            <h1 className="truncate font-display text-base leading-tight font-semibold text-text-strong">
-              {page.title}
-            </h1>
-          </>
+          <h1 className="truncate font-display text-base leading-tight font-semibold text-text-strong">
+            {page.title}
+          </h1>
         ) : (
           <span className="font-display text-sm font-medium text-text-strong">
-            {org.name}
+            Lokvera
           </span>
         )}
       </div>
 
       {/* everything else pinned right */}
       <div className="ml-auto flex items-center gap-3">
-        {/* client-side search across leads + calls */}
-        <div className="relative w-64 lg:w-80">
+        {/* live contact search — CRM pages only */}
+        <div className={cn('relative w-64 lg:w-80', !showSearch && 'hidden')}>
           <Search
             size={14}
             className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-text-faint"
@@ -86,34 +74,25 @@ export function Topbar() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onBlur={() => setTimeout(() => setQ(''), 150)}
-            placeholder="Search leads and calls…"
+            placeholder="Search contacts…"
             className="h-9 pl-8"
           />
           {results.length > 0 && (
             <div className="absolute top-full right-0 left-0 mt-1 overflow-hidden rounded-lg border border-line bg-popover shadow-xl">
               {results.map((r) => (
                 <button
-                  key={`${r.kind}-${r.id}`}
-                  onMouseDown={() =>
-                    navigate({ to: r.kind === 'lead' ? '/leads' : '/calls' })
-                  }
+                  key={r.id}
+                  onMouseDown={() => navigate({ to: '/leads' })}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-strong"
                 >
                   <Badge
                     variant="outline"
-                    className={cn(
-                      'text-[10px] uppercase',
-                      r.kind === 'lead'
-                        ? 'border-brand-blue/30 text-brand-blue'
-                        : 'border-brand-violet/30 text-brand-violet',
-                    )}
+                    className={cn('text-[10px] uppercase', 'border-brand-blue/30 text-brand-blue')}
                   >
-                    {r.kind}
+                    contact
                   </Badge>
                   <span className="truncate text-text-strong">{r.label}</span>
-                  <span className="ml-auto shrink-0 text-xs text-text-faint">
-                    {r.sub}
-                  </span>
+                  <span className="ml-auto shrink-0 text-xs text-text-faint">{r.sub}</span>
                 </button>
               ))}
             </div>
@@ -125,9 +104,7 @@ export function Topbar() {
           variant="ghost"
           size="icon"
           onClick={toggle}
-          aria-label={
-            theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
-          }
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           className="text-text-faint hover:text-text-strong"
         >
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
