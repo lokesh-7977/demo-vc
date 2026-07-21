@@ -1,8 +1,7 @@
-import { useState } from 'react'
-import { FlaskConical, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -10,424 +9,303 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
-import { kindDef } from './nodes'
-import { useApp } from '@/stores/app-store'
-import { cn } from '@/lib/utils'
-import type { Node } from '@xyflow/react'
+import { useKnowledgeBases } from '@/lib/queries'
+import { kindDef, type LokNodeData } from './nodes'
 
-const LANGUAGES = ['Hindi', 'English', 'Hinglish (code-switch)', 'Hinglish']
-const VOICES = [
-  'Meera (Sarvam)',
-  'Arvind (Sarvam)',
-  'Priya (ElevenLabs)',
-  'Raj (Google)',
-]
+type Props = {
+  nodeId: string
+  data: LokNodeData
+  onChange: (patch: Partial<LokNodeData>) => void
+  onClose: () => void
+  onDelete: () => void
+}
 
-function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+/** Right settings panel for the selected node (n8n-style). */
+export function ConfigDrawer({ nodeId, data, onChange, onClose, onDelete }: Props) {
+  const def = kindDef(data.kind)
+  const Icon = def.icon
+  const c = data.config
+
+  const setConfig = (key: string, value: unknown) =>
+    onChange({ config: { ...c, [key]: value } })
+
+  return (
+    <aside className="flex w-80 shrink-0 flex-col border-l border-line bg-popover/60 backdrop-blur">
+      <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
+        <span
+          className="flex size-8 items-center justify-center rounded-lg"
+          style={{ background: `${def.color}22`, color: def.color }}
+        >
+          <Icon size={15} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate font-display text-sm font-semibold text-text-strong">
+            {def.label}
+          </h3>
+          <p className="text-[10px] text-text-faint">node · {nodeId.slice(0, 8)}</p>
+        </div>
+        <button
+          onClick={onClose}
+          className="rounded-lg p-1.5 text-text-faint hover:bg-surface-strong hover:text-text-strong"
+        >
+          <X size={15} />
+        </button>
+      </div>
+
+      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+        <Field label="Label">
+          <Input
+            value={data.label}
+            onChange={(e) => onChange({ label: e.target.value })}
+            placeholder={def.label}
+          />
+        </Field>
+
+        <TypeFields kind={data.kind} c={c} set={setConfig} />
+      </div>
+
+      <div className="border-t border-line p-3">
+        <button
+          onClick={onDelete}
+          className="w-full rounded-lg border border-destructive/30 py-2 text-xs font-medium text-destructive hover:bg-destructive/10"
+        >
+          Delete node
+        </button>
+      </div>
+    </aside>
+  )
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs text-text-soft">{label}</Label>
+      <Label className="text-xs">{label}</Label>
       {children}
+      {hint && <p className="text-[10px] leading-snug text-text-faint">{hint}</p>}
     </div>
   )
 }
 
-/* Right-side settings panel for the selected node — slides in with
-   the canvas. All edits go to local canvas state via onChange. */
-export function ConfigDrawer({
-  node,
-  onChange,
-  onClose,
-  onDelete,
+function TypeFields({
+  kind,
+  c,
+  set,
 }: {
-  node: Node
-  onChange: (patch: Record<string, unknown>) => void
-  onClose: () => void
-  onDelete: () => void
+  kind: string
+  c: Record<string, unknown>
+  set: (key: string, value: unknown) => void
 }) {
-  const providers = useApp((s) => s.providers)
-  const users = useApp((s) => s.users)
-  const kbs = useApp((s) => s.knowledgeBases)
-  const [testOut, setTestOut] = useState<string | null>(null)
+  const str = (k: string) => (c[k] as string) ?? ''
+  const num = (k: string, d: number) => Number(c[k] ?? d)
 
-  const data = node.data as {
-    kind: string
-    label: string
-    config: Record<string, unknown>
-  }
-  const def = kindDef(data.kind)
-  const cfg = data.config
-  const set = (key: string, value: unknown) =>
-    onChange({ config: { ...cfg, [key]: value } })
+  switch (kind) {
+    case 'greeting':
+    case 'end':
+      return (
+        <Field label={kind === 'end' ? 'Goodbye line' : 'What to say'} hint="Supports {{variables}}">
+          <Textarea rows={4} value={str('text')} onChange={(e) => set('text', e.target.value)} />
+        </Field>
+      )
 
-  const testNode = () => {
-    setTestOut(null)
-    setTimeout(
-      () =>
-        setTestOut(
-          data.kind === 'say'
-            ? '„Namaste! Main Lokvera se bol rahi hoon…" — 620ms LLM · 178ms TTS'
-            : data.kind === 'api'
-              ? '200 OK · { "status": "queued" } · 340ms'
-              : data.kind === 'branch'
-                ? 'Input "haan chahiye" → matched branch: yes (0.94 confidence)'
-                : 'Simulated OK — node executed in 210ms',
-        ),
-      600,
-    )
-  }
+    case 'question':
+      return (
+        <>
+          <Field label="Question" hint="Spoken to the caller, then we wait for their reply">
+            <Textarea rows={3} value={str('text')} onChange={(e) => set('text', e.target.value)} />
+          </Field>
+          <Field label="Save answer to variable">
+            <Input value={str('saveTo')} onChange={(e) => set('saveTo', e.target.value)} placeholder="answer" />
+          </Field>
+        </>
+      )
 
-  const selectFor = (
-    value: string,
-    onValue: (v: string) => void,
-    options: string[],
-  ) => (
-    <Select value={value} onValueChange={onValue}>
-      <SelectTrigger className="w-full">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((o) => (
-          <SelectItem key={o} value={o}>
-            {o}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
+    case 'prompt':
+      return (
+        <>
+          <Field label="Prompt template" hint="{{last_user_input}}, {{knowledge_context}} and any saved variables work here">
+            <Textarea rows={5} value={str('template')} onChange={(e) => set('template', e.target.value)} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Temperature">
+              <Input type="number" step="0.1" min={0} max={1} value={num('temperature', 0.1)}
+                onChange={(e) => set('temperature', Number(e.target.value))} />
+            </Field>
+            <Field label="Max tokens">
+              <Input type="number" min={10} max={2000} value={num('maxTokens', 150)}
+                onChange={(e) => set('maxTokens', Number(e.target.value))} />
+            </Field>
+          </div>
+          <Field label="Save reply to variable">
+            <Input value={str('saveTo')} onChange={(e) => set('saveTo', e.target.value)} />
+          </Field>
+        </>
+      )
 
-  return (
-    <aside className="flex w-80 shrink-0 animate-in slide-in-from-right flex-col border-l border-line bg-card/95 backdrop-blur-xl duration-200">
-      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-        <span
-          className="flex size-7 items-center justify-center rounded-lg"
-          style={{ background: `${def.color}1f`, color: def.color }}
-        >
-          <def.icon size={14} />
-        </span>
-        <span className="font-display text-sm text-text-strong">{def.label}</span>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          aria-label="Close settings"
-          className="ml-auto size-7 text-text-faint"
-        >
-          <X size={14} />
-        </Button>
-      </div>
+    case 'knowledge_search':
+      return <KnowledgeFields c={c} set={set} />
 
-      <div className="flex-1 space-y-4 overflow-y-auto p-4">
-        <FieldRow label="Node label">
-          <Input
-            value={data.label}
-            onChange={(e) => onChange({ label: e.target.value })}
-          />
-        </FieldRow>
+    case 'condition':
+    case 'decision':
+      return (
+        <>
+          {kind === 'condition' ? (
+            <Field label="Variable to check">
+              <Input value={str('variable')} onChange={(e) => set('variable', e.target.value)} placeholder="answer" />
+            </Field>
+          ) : (
+            <Field label="Decision question" hint="The LLM reads the conversation and picks a branch">
+              <Textarea rows={3} value={str('question')} onChange={(e) => set('question', e.target.value)} />
+            </Field>
+          )}
+          <Field label="Branches" hint="One per line — each becomes an output port">
+            <Textarea
+              rows={4}
+              value={((c.branches as string[]) ?? []).join('\n')}
+              onChange={(e) =>
+                set('branches', e.target.value.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 6))
+              }
+            />
+          </Field>
+        </>
+      )
 
-        {data.kind === 'start' && (
-          <FieldRow label="Trigger">
-            <Select
-              value={cfg.trigger as string}
-              onValueChange={(v) => set('trigger', v)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="inbound">Inbound call</SelectItem>
-                <SelectItem value="outbound">Outbound campaign</SelectItem>
-                <SelectItem value="webhook">Webhook</SelectItem>
-              </SelectContent>
-            </Select>
-          </FieldRow>
-        )}
-
-        {data.kind === 'say' && (
-          <>
-            <FieldRow label="LLM system prompt">
-              <Textarea
-                rows={4}
-                className="resize-none"
-                value={(cfg.prompt as string) ?? ''}
-                onChange={(e) => set('prompt', e.target.value)}
-                placeholder="Greet warmly in Hinglish, mention the offer…"
-              />
-            </FieldRow>
-            <FieldRow label="Static fallback line">
-              <Input
-                value={(cfg.fallback as string) ?? ''}
-                onChange={(e) => set('fallback', e.target.value)}
-              />
-            </FieldRow>
-            <FieldRow label="Language">
-              {selectFor(cfg.language as string, (v) => set('language', v), LANGUAGES)}
-            </FieldRow>
-            <FieldRow label="Voice">
-              {selectFor(cfg.voice as string, (v) => set('voice', v), VOICES)}
-            </FieldRow>
-            <div className="grid grid-cols-2 gap-3">
-              <FieldRow label="LLM provider">
-                {selectFor(cfg.llm as string, (v) => set('llm', v), providers.llm)}
-              </FieldRow>
-              <FieldRow label="TTS provider">
-                {selectFor(cfg.tts as string, (v) => set('tts', v), providers.tts)}
-              </FieldRow>
-            </div>
-          </>
-        )}
-
-        {data.kind === 'collect' && (
-          <>
-            <FieldRow label="Save answer as variable">
-              <Input
-                value={(cfg.variable as string) ?? ''}
-                onChange={(e) => set('variable', e.target.value)}
-              />
-            </FieldRow>
-            <FieldRow label="Input mode">
-              <Select
-                value={cfg.mode as string}
-                onValueChange={(v) => set('mode', v)}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
+    case 'api':
+      return (
+        <>
+          <div className="grid grid-cols-[90px_1fr] gap-3">
+            <Field label="Method">
+              <Select value={str('method') || 'POST'} onValueChange={(v) => set('method', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="speech">Speech</SelectItem>
-                  <SelectItem value="dtmf">DTMF (keypad)</SelectItem>
-                </SelectContent>
-              </Select>
-            </FieldRow>
-            <FieldRow label="STT provider">
-              {selectFor(cfg.stt as string, (v) => set('stt', v), providers.stt)}
-            </FieldRow>
-          </>
-        )}
-
-        {data.kind === 'branch' && (
-          <>
-            <FieldRow label="Route on">
-              <Select value={cfg.on as string} onValueChange={(v) => set('on', v)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="intent">Intent</SelectItem>
-                  <SelectItem value="sentiment">Sentiment</SelectItem>
-                  <SelectItem value="keyword">Keyword</SelectItem>
-                  <SelectItem value="variable">Variable</SelectItem>
-                </SelectContent>
-              </Select>
-            </FieldRow>
-            <FieldRow label="Branches (comma separated)">
-              <Input
-                value={((cfg.branches as string[]) ?? []).join(', ')}
-                onChange={(e) =>
-                  set(
-                    'branches',
-                    e.target.value
-                      .split(',')
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                  )
-                }
-              />
-            </FieldRow>
-          </>
-        )}
-
-        {data.kind === 'api' && (
-          <>
-            <FieldRow label="URL">
-              <Input
-                value={(cfg.url as string) ?? ''}
-                onChange={(e) => set('url', e.target.value)}
-                placeholder="https://api.example.com/hook"
-              />
-            </FieldRow>
-            <FieldRow label="Method">
-              {selectFor(cfg.method as string, (v) => set('method', v), [
-                'GET',
-                'POST',
-                'PUT',
-                'PATCH',
-              ])}
-            </FieldRow>
-            <FieldRow label="Payload template">
-              <Textarea
-                rows={3}
-                className="resize-none font-mono text-xs"
-                value={(cfg.payload as string) ?? ''}
-                onChange={(e) => set('payload', e.target.value)}
-              />
-            </FieldRow>
-            <p className="text-[11px] text-text-faint">
-              Use {'{{variables}}'} captured by Collect Input nodes.
-            </p>
-          </>
-        )}
-
-        {data.kind === 'rag' && (
-          <FieldRow label="Knowledge base">
-            <Select value={cfg.kb as string} onValueChange={(v) => set('kb', v)}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {kbs.map((kb) => (
-                  <SelectItem key={kb.id} value={kb.id}>
-                    {kb.name} ({kb.docs} docs)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FieldRow>
-        )}
-
-        {data.kind === 'transfer' && (
-          <>
-            <FieldRow label="Transfer to">
-              <Select
-                value={(cfg.target as string) || 'none'}
-                onValueChange={(v) => set('target', v === 'none' ? '' : v)}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Pick a rep…" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Pick a rep…</SelectItem>
-                  {users.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name}
-                    </SelectItem>
+                  {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </FieldRow>
-            <FieldRow label="Mode">
-              <div className="grid grid-cols-2 gap-2">
-                {(['warm', 'cold'] as const).map((m) => (
-                  <Button
-                    key={m}
-                    type="button"
-                    variant={cfg.mode === m ? 'default' : 'outline'}
-                    size="sm"
-                    className={cn('capitalize', cfg.mode !== m && 'text-text-faint')}
-                    onClick={() => set('mode', m)}
-                  >
-                    {m}
-                  </Button>
-                ))}
-              </div>
-            </FieldRow>
-            <FieldRow label="Whisper message (rep hears this first)">
-              <Input
-                value={(cfg.whisper as string) ?? ''}
-                onChange={(e) => set('whisper', e.target.value)}
-              />
-            </FieldRow>
-          </>
-        )}
-
-        {data.kind === 'amd' && (
-          <>
-            <div className="flex items-center justify-between rounded-lg border border-line px-3 py-2.5">
-              <Label className="text-sm text-text-soft">
-                Answering-machine detection
-              </Label>
-              <Switch
-                checked={!!cfg.amd}
-                onCheckedChange={(v) => set('amd', v)}
-              />
-            </div>
-            <FieldRow label="Voicemail drop script">
-              <Textarea
-                rows={3}
-                className="resize-none"
-                value={(cfg.voicemailScript as string) ?? ''}
-                onChange={(e) => set('voicemailScript', e.target.value)}
-              />
-            </FieldRow>
-          </>
-        )}
-
-        {data.kind === 'wait' && (
-          <div className="grid grid-cols-2 gap-3">
-            <FieldRow label="Silence timeout (s)">
-              <Input
-                type="number"
-                value={(cfg.silenceTimeout as number) ?? 6}
-                onChange={(e) => set('silenceTimeout', Number(e.target.value))}
-              />
-            </FieldRow>
-            <FieldRow label="Max retries">
-              <Input
-                type="number"
-                value={(cfg.maxRetries as number) ?? 3}
-                onChange={(e) => set('maxRetries', Number(e.target.value))}
-              />
-            </FieldRow>
+            </Field>
+            <Field label="URL">
+              <Input value={str('url')} onChange={(e) => set('url', e.target.value)} placeholder="https://api.example.com/leads" />
+            </Field>
           </div>
-        )}
+          <Field label="Body (JSON)" hint="{{variables}} are interpolated before sending">
+            <Textarea
+              rows={4}
+              className="font-mono text-xs"
+              value={typeof c.body === 'string' ? (c.body as string) : JSON.stringify(c.body ?? {}, null, 2)}
+              onChange={(e) => {
+                try {
+                  set('body', JSON.parse(e.target.value))
+                } catch {
+                  set('body', e.target.value)
+                }
+              }}
+            />
+          </Field>
+          <Field label="Save response to variable">
+            <Input value={str('saveTo')} onChange={(e) => set('saveTo', e.target.value)} />
+          </Field>
+        </>
+      )
 
-        {data.kind === 'consent' && (
-          <>
-            <FieldRow label="Disclosure script">
-              <Textarea
-                rows={3}
-                className="resize-none"
-                value={(cfg.script as string) ?? ''}
-                onChange={(e) => set('script', e.target.value)}
-              />
-            </FieldRow>
-            <p className="rounded-lg border border-amber-500/25 bg-amber-500/8 p-2.5 text-[11px] leading-relaxed text-amber-700 dark:text-amber-200/90">
-              Flows cannot be published without a Consent node. The disclosure
-              plays before any AI conversation starts.
-            </p>
-          </>
-        )}
-
-        {data.kind === 'end' && (
-          <FieldRow label="Post-call action">
-            <Select
-              value={cfg.action as string}
-              onValueChange={(v) => set('action', v)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
+    case 'tool':
+      return (
+        <>
+          <Field label="Tool">
+            <Select value={str('toolName') || 'webhook'} onValueChange={(v) => set('toolName', v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="tag_lead">Tag lead</SelectItem>
-                <SelectItem value="send_sms">Send SMS</SelectItem>
-                <SelectItem value="schedule_callback">
-                  Schedule callback
-                </SelectItem>
+                {['webhook', 'crm_update', 'calendar_booking', 'send_sms'].map((t) => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
-          </FieldRow>
-        )}
+          </Field>
+          <Field label="Params (JSON)">
+            <Textarea
+              rows={4}
+              className="font-mono text-xs"
+              value={JSON.stringify(c.params ?? {}, null, 2)}
+              onChange={(e) => {
+                try { set('params', JSON.parse(e.target.value)) } catch { /* keep typing */ }
+              }}
+            />
+          </Field>
+        </>
+      )
 
-        {/* test node */}
-        <div className="space-y-2 border-t border-line pt-4">
-          <Button variant="secondary" size="sm" className="w-full" onClick={testNode}>
-            <FlaskConical size={13} /> Test this node
-          </Button>
-          {testOut && (
-            <p className="rounded-lg border border-brand-cyan/25 bg-brand-cyan/8 p-2.5 font-mono text-[11px] leading-relaxed text-teal-700 dark:text-brand-cyan">
-              {testOut}
-            </p>
-          )}
-        </div>
-      </div>
+    case 'transfer':
+      return (
+        <Field label="Handoff message" hint="Spoken before the transfer">
+          <Textarea rows={3} value={str('message')} onChange={(e) => set('message', e.target.value)} />
+        </Field>
+      )
 
-      <div className="border-t border-line p-3">
-        <Button variant="destructive" size="sm" className="w-full" onClick={onDelete}>
-          Delete node
-        </Button>
+    case 'delay':
+      return (
+        <Field label="Seconds">
+          <Input type="number" min={0} max={30} value={num('seconds', 1)}
+            onChange={(e) => set('seconds', Number(e.target.value))} />
+        </Field>
+      )
+
+    case 'variable_assignment':
+      return (
+        <Field label="Assignments (JSON)" hint='e.g. { "qualified": "yes" }'>
+          <Textarea
+            rows={5}
+            className="font-mono text-xs"
+            value={JSON.stringify(c.assignments ?? {}, null, 2)}
+            onChange={(e) => {
+              try { set('assignments', JSON.parse(e.target.value)) } catch { /* keep typing */ }
+            }}
+          />
+        </Field>
+      )
+
+    default:
+      return (
+        <p className="text-xs text-text-faint">
+          This node has no settings — connect it and go.
+        </p>
+      )
+  }
+}
+
+function KnowledgeFields({
+  c,
+  set,
+}: {
+  c: Record<string, unknown>
+  set: (key: string, value: unknown) => void
+}) {
+  const { data: kbs } = useKnowledgeBases()
+  const selected = ((c.kbIds as string[]) ?? [])[0] ?? ''
+
+  return (
+    <>
+      <Field label="Knowledge base" hint="Leave empty to search all of the agent's KBs">
+        <Select value={selected || 'all'} onValueChange={(v) => set('kbIds', v === 'all' ? undefined : [v])}>
+          <SelectTrigger><SelectValue placeholder="All knowledge bases" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All knowledge bases</SelectItem>
+            {(kbs ?? []).map((kb) => (
+              <SelectItem key={kb.id} value={kb.id}>{kb.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Query template">
+        <Input value={(c.query as string) ?? ''} onChange={(e) => set('query', e.target.value)} />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Top K">
+          <Input type="number" min={1} max={10} value={Number(c.limit ?? 5)}
+            onChange={(e) => set('limit', Number(e.target.value))} />
+        </Field>
+        <Field label="Save to">
+          <Input value={(c.saveTo as string) ?? ''} onChange={(e) => set('saveTo', e.target.value)} />
+        </Field>
       </div>
-    </aside>
+    </>
   )
 }
