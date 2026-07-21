@@ -15,30 +15,30 @@
   --brand-violet: #8b5cf6;
   --brand-cyan: #16b8a6;
 
-  /* light surfaces */
+  /* light surfaces — crisp, elevated, readable on white */
   --text-strong: #101733;
   --text-soft: #4c5670;
   --text-faint: #8a92ab;
-  --surface: rgb(16 23 51 / 3%);
-  --surface-strong: rgb(16 23 51 / 6%);
-  --line: rgb(16 23 51 / 10%);
-  --line-strong: rgb(16 23 51 / 18%);
-  --glass-shadow: 0 1px 2px rgb(16 23 51 / 4%), 0 8px 24px rgb(16 23 51 / 6%);
+  --surface: rgb(16 23 51 / 4%);
+  --surface-strong: rgb(16 23 51 / 8%);
+  --line: rgb(16 23 51 / 12%);
+  --line-strong: rgb(16 23 51 / 20%);
+  --glass-shadow: 0 1px 3px rgb(16 23 51 / 6%), 0 0 0 1px rgb(16 23 51 / 4%);
 
   /* shadcn semantic tokens */
-  --background: #fbfcfe;
+  --background: #f4f5f7;
   --foreground: #333d59;
   --card: #ffffff;
-  --card-foreground: #333d59;
+  --card-foreground: #1e293b;
   --popover: #ffffff;
-  --popover-foreground: #333d59;
+  --popover-foreground: #1e293b;
   --primary: var(--brand-blue);
   --primary-foreground: #ffffff;
   --secondary: rgb(16 23 51 / 5%);
   --secondary-foreground: var(--text-strong);
-  --muted: rgb(16 23 51 / 4%);
+  --muted: rgb(16 23 51 / 5%);
   --muted-foreground: var(--text-soft);
-  --accent: rgb(79 124 255 / 9%);
+  --accent: rgb(79 124 255 / 10%);
   --accent-foreground: #2b4bcc;
   --destructive: #dc4c4c;
   --border: var(--line);
@@ -124,20 +124,27 @@
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    /* light: airy white gradient, never flat grey */
-    background-image: linear-gradient(
-      170deg,
-      #ffffff 0%,
-      #fbfcfe 40%,
-      #f3f6fd 100%
-    );
+    /* light: flat, calm surface — no gradient, no glow (Periskope) */
+    background-image: none;
     background-attachment: fixed;
     min-height: 100svh;
   }
   .dark body {
     background-image: linear-gradient(170deg, #07080f 0%, #05060c 55%, #080a18 100%);
   }
-  /* ambient aurora — whisper-quiet in light, atmospheric in dark */
+  /* light mode: subtle inset glow on cards for depth */
+  .dark body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(600px 400px at 12% -10%, rgb(79 124 255 / 10%), transparent 60%),
+      radial-gradient(700px 500px at 95% 5%, rgb(139 92 246 / 8%), transparent 60%),
+      radial-gradient(500px 500px at 60% 110%, rgb(56 225 208 / 5%), transparent 60%);
+  }
+  /* light mode: very subtle ambient glow */
   body::before {
     content: '';
     position: fixed;
@@ -145,15 +152,8 @@
     pointer-events: none;
     z-index: 0;
     background:
-      radial-gradient(700px 420px at 15% -10%, rgb(79 124 255 / 7%), transparent 60%),
-      radial-gradient(800px 520px at 95% 0%, rgb(139 92 246 / 6%), transparent 60%),
-      radial-gradient(600px 500px at 50% 115%, rgb(56 190 201 / 5%), transparent 60%);
-  }
-  .dark body::before {
-    background:
-      radial-gradient(600px 400px at 12% -10%, rgb(79 124 255 / 10%), transparent 60%),
-      radial-gradient(700px 500px at 95% 5%, rgb(139 92 246 / 8%), transparent 60%),
-      radial-gradient(500px 500px at 60% 110%, rgb(56 225 208 / 5%), transparent 60%);
+      radial-gradient(500px 300px at 15% -5%, rgb(79 124 255 / 4%), transparent 60%),
+      radial-gradient(400px 300px at 85% 0%, rgb(139 92 246 / 3%), transparent 60%);
   }
   ::-webkit-scrollbar {
     width: 8px;
@@ -175,7 +175,7 @@
 @utility glass {
   background: var(--card);
   border: 1px solid var(--line);
-  box-shadow: var(--glass-shadow);
+  box-shadow: var(--glass-shadow), 0 1px 2px rgb(0 0 0 / 3%);
 }
 
 @utility glass-hover {
@@ -187,7 +187,7 @@
 }
 
 @utility text-gradient {
-  background: linear-gradient(100deg, var(--text-strong) 10%, var(--brand-blue) 60%, var(--brand-violet) 95%);
+  background: linear-gradient(135deg, var(--text-strong) 0%, var(--brand-blue) 55%, var(--brand-violet) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -216,14 +216,78 @@
   * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
 
+/* ── toasts: tinted card per type, filled badge icon (Periskope) ── */
+[data-sonner-toast] {
+  align-items: flex-start !important;
+  border-width: 1px !important;
+  box-shadow: 0 6px 20px rgb(17 24 39 / 8%) !important;
+}
+[data-sonner-toast] [data-icon] {
+  align-self: flex-start;
+  margin-top: 1px;
+}
+[data-sonner-toast] [data-close-button] {
+  color: var(--text-faint);
+  background: transparent !important;
+  border: none !important;
+  top: 0.65rem;
+  right: 0.6rem;
+  left: auto;
+  transform: none;
+  opacity: 0.7;
+}
+[data-sonner-toast] [data-close-button]:hover { opacity: 1; }
+
+/* success — soft green */
+[data-sonner-toast][data-type='success'] {
+  background: #ecfaf0 !important;
+  border-color: #b7e6c6 !important;
+  color: var(--text-strong) !important;
+}
+[data-sonner-toast][data-type='success'] [data-icon] { color: #17a34a; }
+
+/* warning / draft — soft amber */
+[data-sonner-toast][data-type='warning'] {
+  background: #fdf5ec !important;
+  border-color: #f4d7ac !important;
+  color: var(--text-strong) !important;
+}
+[data-sonner-toast][data-type='warning'] [data-icon] { color: #e08a1e; }
+
+/* error — soft red */
+[data-sonner-toast][data-type='error'] {
+  background: #fdeeee !important;
+  border-color: #f2c2c2 !important;
+  color: var(--text-strong) !important;
+}
+[data-sonner-toast][data-type='error'] [data-icon] { color: #dc4c4c; }
+
+/* info — soft green tint to match brand */
+[data-sonner-toast][data-type='info'] {
+  background: #eef6f1 !important;
+  border-color: #c5e2cf !important;
+  color: var(--text-strong) !important;
+}
+[data-sonner-toast][data-type='info'] [data-icon] { color: #17a34a; }
+
+/* dark mode: deepen the tints so they read on the near-black bg */
+.dark [data-sonner-toast][data-type='success'] { background: #0e2318 !important; border-color: #1f5236 !important; }
+.dark [data-sonner-toast][data-type='warning'] { background: #2a1e0e !important; border-color: #5c421c !important; }
+.dark [data-sonner-toast][data-type='error'] { background: #2a1414 !important; border-color: #5c2b2b !important; }
+.dark [data-sonner-toast][data-type='info'] { background: #0e2318 !important; border-color: #1f5236 !important; }
+
 /* ── react flow theming (both modes via semantic vars) ─────────── */
 .react-flow {
   --xy-background-color: transparent;
-  --xy-edge-stroke: var(--line-strong);
+  /* edges need more presence than hairline borders */
+  --xy-edge-stroke: rgb(16 23 51 / 30%);
   --xy-edge-stroke-selected: var(--brand-blue);
   --xy-handle-background-color: var(--brand-blue);
   --xy-handle-border-color: var(--card);
   --xy-attribution-background-color: transparent;
+}
+.dark .react-flow {
+  --xy-edge-stroke: rgb(255 255 255 / 24%);
 }
 .react-flow__node { font-family: var(--font-sans); }
 .react-flow__controls {
@@ -243,4 +307,42 @@
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 10px;
+}
+
+/* ── animated dashed edges (n8n-style flow) ───────────────────── */
+@keyframes dash {
+  to { stroke-dashoffset: -20; }
+}
+
+/* ── node hover/selection polish ───────────────────────────────── */
+.react-flow__node {
+  transition: filter 0.15s ease;
+}
+.react-flow__node:hover {
+  filter: drop-shadow(0 4px 12px rgb(0 0 0 / 10%));
+}
+.react-flow__node.selected {
+  filter: drop-shadow(0 0 0 2px var(--brand-blue)) drop-shadow(0 4px 16px rgb(79 124 255 / 20%));
+}
+
+/* ── snap grid visual (subtle) ────────────────────────────────── */
+.react-flow__background {
+  opacity: 0.6;
+}
+
+/* ── node execution pulse (during test runs) ──────────────────── */
+@keyframes exec-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(79 124 255 / 40%); }
+  50% { box-shadow: 0 0 0 8px rgb(79 124 255 / 0%); }
+}
+.node-running {
+  animation: exec-pulse 1.5s ease-in-out infinite;
+}
+
+/* ── node error state ─────────────────────────────────────────── */
+.node-error {
+  box-shadow: 0 0 0 2px #ef4444 !important;
+}
+.node-success {
+  box-shadow: 0 0 0 2px #22c55e !important;
 }
