@@ -1,316 +1,224 @@
-import { useMemo, useState } from 'react'
-import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
-import { Ban, ChevronDown, Megaphone, Search, Tag, Upload } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import type { ColumnDef } from '@tanstack/react-table'
+import { Loader2, Plus, Search, Trash2, Upload } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Label } from '@/components/ui/label'
 import { DataTable } from '@/components/common/DataTable'
-import { StatusPill } from '@/components/common/StatusPill'
-import { LeadSheet } from './LeadSheet'
-import { ImportDialog } from './ImportDialog'
-import { CallNowDialog } from './CallNowDialog'
-import { useApp } from '@/stores/app-store'
-import { fmtDate } from '@/lib/format'
-import type { Lead, LeadStatus } from '@/types'
-
-const STATUSES: LeadStatus[] = [
-  'New',
-  'Attempted',
-  'Answered',
-  'Interested',
-  'Converted',
-  'Rejected',
-  'DNC',
-]
+import {
+  useContacts,
+  useCreateContact,
+  useDeleteContact,
+  useImportContacts,
+  type Contact,
+} from '@/lib/queries'
+import { fmtDateTime } from '@/lib/format'
 
 export function LeadsView() {
-  const session = useApp((s) => s.session)!
-  const allLeads = useApp((s) => s.leads)
-  const users = useApp((s) => s.users)
-  const calls = useApp((s) => s.calls)
-  const bulkUpdateLeads = useApp((s) => s.bulkUpdateLeads)
-  const updateLead = useApp((s) => s.updateLead)
+  const [search, setSearch] = useState('')
+  const { data, isLoading } = useContacts(search || undefined)
+  const contacts = data?.items ?? []
 
-  const isAdmin = session.role === 'admin'
-  const [status, setStatus] = useState('all')
-  const [rep, setRep] = useState('all')
-  const [source, setSource] = useState('all')
-  const [q, setQ] = useState('')
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
-  const [openLeadId, setOpenLeadId] = useState<string | null>(null)
-  const [importOpen, setImportOpen] = useState(false)
-  const [callingLeadId, setCallingLeadId] = useState<string | null>(null)
+  const createContact = useCreateContact()
+  const deleteContact = useDeleteContact()
+  const importContacts = useImportContacts()
+  const fileRef = useRef<HTMLInputElement>(null)
 
-  // reps see only their own leads
-  const visible = isAdmin
-    ? allLeads
-    : allLeads.filter((l) => l.assignedTo === session.id)
+  const [addOpen, setAddOpen] = useState(false)
+  const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', email: '' })
 
-  const sources = useMemo(
-    () => [...new Set(allLeads.map((l) => l.source))],
-    [allLeads],
-  )
-
-  const filtered = useMemo(
-    () =>
-      visible.filter((l) => {
-        if (status !== 'all' && l.status !== status) return false
-        if (isAdmin && rep !== 'all' && l.assignedTo !== rep) return false
-        if (source !== 'all' && l.source !== source) return false
-        if (
-          q &&
-          !l.name.toLowerCase().includes(q.toLowerCase()) &&
-          !l.phone.includes(q)
-        )
-          return false
-        return true
-      }),
-    [visible, status, rep, source, q, isAdmin],
-  )
-
-  const selectedIds = Object.keys(rowSelection).filter((k) => rowSelection[k])
-
-  const bulk = (patch: Partial<Lead>) => {
-    bulkUpdateLeads(selectedIds, patch)
-    setRowSelection({})
-  }
-
-  const columns = useMemo<ColumnDef<Lead>[]>(
+  const columns = useMemo<ColumnDef<Contact>[]>(
     () => [
       {
-        id: 'select',
-        enableSorting: false,
-        header: ({ table }) => (
-          <Checkbox
-            checked={
-              table.getIsAllRowsSelected() ||
-              (table.getIsSomeRowsSelected() && 'indeterminate')
-            }
-            onCheckedChange={(v) => table.toggleAllRowsSelected(!!v)}
-            aria-label="Select all leads"
-          />
-        ),
-        cell: ({ row }) => (
-          <span onClick={(e) => e.stopPropagation()}>
-            <Checkbox
-              checked={row.getIsSelected()}
-              onCheckedChange={(v) => row.toggleSelected(!!v)}
-              aria-label={`Select ${row.original.name}`}
-            />
-          </span>
-        ),
-      },
-      {
-        accessorKey: 'name',
         header: 'Name',
+        accessorFn: (c) =>
+          [c.firstName, c.lastName].filter(Boolean).join(' ') || '—',
         cell: ({ getValue }) => (
           <span className="font-medium text-text-strong">{getValue<string>()}</span>
         ),
       },
+      { header: 'Phone', accessorKey: 'phone' },
       {
-        accessorKey: 'phone',
-        header: 'Phone',
-        enableSorting: false,
-        cell: ({ getValue }) => (
-          <span className="tabular-nums text-text-soft">{getValue<string>()}</span>
-        ),
+        header: 'Email',
+        accessorFn: (c) => c.email ?? '—',
       },
       {
-        accessorKey: 'source',
         header: 'Source',
+        accessorFn: (c) => c.source ?? 'manual',
         cell: ({ getValue }) => (
-          <span className="text-text-faint">{getValue<string>()}</span>
-        ),
-      },
-      {
-        accessorKey: 'status',
-        header: 'Status',
-        cell: ({ row, getValue }) => (
-          <span onClick={(e) => e.stopPropagation()}>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button aria-label={`Change status of ${row.original.name}`}>
-                  <StatusPill
-                    status={getValue<string>()}
-                    className="cursor-pointer gap-1"
-                  >
-                    {getValue<string>()}
-                    <ChevronDown size={10} className="opacity-70" />
-                  </StatusPill>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                {STATUSES.map((s) => (
-                  <DropdownMenuItem
-                    key={s}
-                    onClick={() => updateLead(row.original.id, { status: s })}
-                  >
-                    <StatusPill status={s}>{s}</StatusPill>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+          <span className="rounded-md bg-surface-strong px-1.5 py-0.5 text-[10px] capitalize text-text-soft">
+            {getValue<string>().replaceAll('_', ' ')}
           </span>
         ),
       },
       {
-        id: 'assigned',
-        header: 'Assigned',
-        accessorFn: (l) => users.find((u) => u.id === l.assignedTo)?.name ?? '—',
-        cell: ({ getValue }) => (
-          <span className="text-text-soft">{getValue<string>()}</span>
-        ),
+        header: 'Added',
+        accessorFn: (c) => fmtDateTime(c.createdAt),
       },
       {
-        id: 'lastCall',
-        header: 'Last call',
-        accessorFn: (l) => calls.find((c) => c.id === l.lastCallId)?.date ?? '',
-        cell: ({ getValue }) => (
-          <span className="text-text-faint">
-            {getValue<string>() ? fmtDate(getValue<string>()) : '—'}
-          </span>
-        ),
-      },
-      {
-        accessorKey: 'nextFollowUp',
-        header: 'Follow-up',
-        cell: ({ getValue }) => (
-          <span className="text-text-faint">
-            {getValue<string>() ? fmtDate(getValue<string>()) : '—'}
-          </span>
+        id: 'actions',
+        header: '',
+        cell: ({ row }) => (
+          <button
+            onClick={async (e) => {
+              e.stopPropagation()
+              try {
+                await deleteContact.mutateAsync(row.original.id)
+                toast.success('Contact deleted')
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : 'Delete failed')
+              }
+            }}
+            className="rounded-md p-1.5 text-text-faint hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 size={13} />
+          </button>
         ),
       },
     ],
-    [users, calls, updateLead],
+    [deleteContact],
   )
 
+  const handleImport = async (file: File) => {
+    try {
+      const result = await importContacts.mutateAsync(file)
+      toast.success(
+        `Imported: ${result.created} new, ${result.updated} updated, ${result.skipped} skipped`,
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Import failed')
+    }
+  }
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      await createContact.mutateAsync({
+        phone: form.phone,
+        firstName: form.firstName || undefined,
+        lastName: form.lastName || undefined,
+        email: form.email || undefined,
+      })
+      toast.success('Contact added')
+      setAddOpen(false)
+      setForm({ firstName: '', lastName: '', phone: '', email: '' })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Add failed')
+    }
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
-        {/* filters */}
-        <div className="relative">
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="relative w-72">
           <Search
-            size={13}
-            className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-text-faint"
+            size={14}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-faint"
           />
           <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Name or phone…"
-            className="w-52 pl-8"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name, phone or email…"
+            className="h-9 pl-8"
           />
         </div>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-36">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            {STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {isAdmin && (
-          <Select value={rep} onValueChange={setRep}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Rep" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All reps</SelectItem>
-              {users.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <Select value={source} onValueChange={setSource}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Source" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All sources</SelectItem>
-            {sources.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <span className="ml-auto text-xs text-text-faint">
-          {filtered.length} of {visible.length} leads
-        </span>
-        <Button onClick={() => setImportOpen(true)}>
-          <Upload size={14} /> Import numbers
-        </Button>
-      </div>
-
-      {/* bulk bar */}
-      {selectedIds.length > 0 && (
-        <div className="glass flex flex-wrap items-center gap-2 rounded-xl px-4 py-2.5">
-          <span className="text-sm text-text-strong">
-            {selectedIds.length} selected
-          </span>
-          {isAdmin && (
-            <Select onValueChange={(v) => bulk({ assignedTo: v })}>
-              <SelectTrigger size="sm" className="w-40">
-                <SelectValue placeholder="Assign to rep…" />
-              </SelectTrigger>
-              <SelectContent>
-                {users.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          <Button variant="secondary" size="sm" onClick={() => bulk({ tags: ['campaign-july'] })}>
-            <Megaphone size={13} /> Add to campaign
+        <span className="text-xs text-text-faint">{data?.total ?? 0} contacts</span>
+        <div className="ml-auto flex gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) handleImport(f)
+              e.target.value = ''
+            }}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fileRef.current?.click()}
+            disabled={importContacts.isPending}
+          >
+            {importContacts.isPending ? (
+              <Loader2 size={14} className="mr-1 animate-spin" />
+            ) : (
+              <Upload size={14} className="mr-1" />
+            )}
+            Import CSV
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => bulk({ tags: ['tagged'] })}>
-            <Tag size={13} /> Tag
-          </Button>
-          <Button variant="destructive" size="sm" onClick={() => bulk({ status: 'DNC' })}>
-            <Ban size={13} /> Mark DNC
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <Plus size={14} className="mr-1" /> Add contact
           </Button>
         </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="animate-spin text-text-faint" />
+        </div>
+      ) : (
+        <DataTable columns={columns} data={contacts} />
       )}
 
-      <DataTable
-        columns={columns}
-        data={filtered}
-        getRowId={(l) => l.id}
-        rowSelection={rowSelection}
-        onRowSelectionChange={setRowSelection}
-        onRowClick={(l) => setOpenLeadId(l.id)}
-        emptyMessage="No leads match these filters."
-      />
-
-      <LeadSheet
-        leadId={openLeadId}
-        onClose={() => setOpenLeadId(null)}
-        onCallNow={(id) => setCallingLeadId(id)}
-      />
-      <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
-      <CallNowDialog leadId={callingLeadId} onClose={() => setCallingLeadId(null)} />
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Add contact</DialogTitle>
+            <DialogDescription>
+              Phone is required — 10-digit numbers assume +91.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAdd} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>First name</Label>
+                <Input
+                  value={form.firstName}
+                  onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Last name</Label>
+                <Input
+                  value={form.lastName}
+                  onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Phone *</Label>
+              <Input
+                required
+                value={form.phone}
+                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                placeholder="+91 98765 43210"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={createContact.isPending}>
+              {createContact.isPending && <Loader2 size={14} className="mr-2 animate-spin" />}
+              Add contact
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
