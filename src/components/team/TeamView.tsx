@@ -1,115 +1,204 @@
 import { useMemo, useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { UserPlus } from 'lucide-react'
+import { Copy, Loader2, UserPlus } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { DataTable } from '@/components/common/DataTable'
 import { StatusPill } from '@/components/common/StatusPill'
-import { InviteDialog } from './InviteDialog'
-import { useApp } from '@/stores/app-store'
-import type { Permission, User } from '@/types'
-
-const PERMS: { key: Permission; label: string }[] = [
-  { key: 'view_dashboard', label: 'Dashboard' },
-  { key: 'view_leads', label: 'Leads' },
-  { key: 'view_calls', label: 'Calls' },
-  { key: 'manage_agents', label: 'Agents' },
-  { key: 'manage_numbers', label: 'Numbers' },
-  { key: 'view_analytics', label: 'Analytics' },
-  { key: 'manage_team', label: 'Team' },
-  { key: 'manage_settings', label: 'Settings' },
-]
+import {
+  useEmployeeInvitations,
+  useEmployees,
+  useInviteEmployee,
+  useRoles,
+  type Employee,
+} from '@/lib/queries'
 
 export function TeamView() {
-  const users = useApp((s) => s.users)
-  const leads = useApp((s) => s.leads)
-  const calls = useApp((s) => s.calls)
-  const setUserPermissions = useApp((s) => s.setUserPermissions)
-  const [inviteOpen, setInviteOpen] = useState(false)
+  const { data: employees, isLoading } = useEmployees()
+  const { data: roles } = useRoles()
+  const { data: invitations } = useEmployeeInvitations()
+  const invite = useInviteEmployee()
 
-  const toggle = (user: User, perm: Permission) => {
-    const next = user.permissions.includes(perm)
-      ? user.permissions.filter((p) => p !== perm)
-      : [...user.permissions, perm]
-    setUserPermissions(user.id, next)
-  }
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState({ email: '', roleId: '' })
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null)
 
-  const columns = useMemo<ColumnDef<User>[]>(
+  const columns = useMemo<ColumnDef<Employee>[]>(
     () => [
       {
-        accessorKey: 'name',
-        header: 'Member',
-        cell: ({ row }) => (
-          <div>
-            <div className="font-medium text-text-strong">
-              {row.original.name}
-            </div>
-            <div className="text-xs text-text-faint">{row.original.email}</div>
-          </div>
+        header: 'Name',
+        accessorFn: (u) => `${u.firstName} ${u.lastName}`,
+        cell: ({ getValue }) => (
+          <span className="font-medium text-text-strong">{getValue<string>()}</span>
         ),
       },
+      { header: 'Email', accessorKey: 'email' },
       {
-        accessorKey: 'role',
         header: 'Role',
+        accessorFn: (u) => u.role ?? '—',
         cell: ({ getValue }) => (
-          <StatusPill status={getValue<string>()}>
-            {getValue<string>() === 'admin' ? 'Admin' : 'Sales Rep'}
-          </StatusPill>
+          <StatusPill status={getValue<string>()}>{getValue<string>()}</StatusPill>
         ),
       },
       {
-        id: 'leads',
-        header: 'Leads',
-        accessorFn: (u) => leads.filter((l) => l.assignedTo === u.id).length,
+        header: 'Status',
+        accessorFn: (u) => (u.isActive ? 'active' : 'disabled'),
         cell: ({ getValue }) => (
-          <span className="tabular-nums text-text-soft">
-            {getValue<number>()}
-          </span>
+          <StatusPill status={getValue<string>()}>{getValue<string>()}</StatusPill>
         ),
       },
-      {
-        id: 'calls',
-        header: 'Calls',
-        accessorFn: (u) => calls.filter((c) => c.repId === u.id).length,
-        cell: ({ getValue }) => (
-          <span className="tabular-nums text-text-soft">
-            {getValue<number>()}
-          </span>
-        ),
-      },
-      ...PERMS.map<ColumnDef<User>>((p) => ({
-        id: p.key,
-        header: p.label,
-        enableSorting: false,
-        cell: ({ row }) => (
-          <Checkbox
-            checked={row.original.permissions.includes(p.key)}
-            onCheckedChange={() => toggle(row.original, p.key)}
-            aria-label={`${p.label} access for ${row.original.name}`}
-          />
-        ),
-      })),
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [leads, calls, users],
+    [],
   )
+
+  const sendInvite = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      const result = await invite.mutateAsync(form)
+      setInviteUrl(result.inviteUrl)
+      toast.success(result.emailSent ? 'Invitation sent' : 'Invitation created')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Invite failed')
+    }
+  }
+
+  const pending = (invitations ?? []).filter((i) => i.status === 'PENDING')
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
-        <Button onClick={() => setInviteOpen(true)}>
-          <UserPlus size={14} /> Invite user
-        </Button>
-      </div>
+      <Card>
+        <CardHeader className="flex-row items-center justify-between">
+          <div>
+            <CardTitle className="font-display text-base">Team members</CardTitle>
+            <CardDescription>
+              Seats are limited by your plan — Basic includes 3 users.
+            </CardDescription>
+          </div>
+          <Button size="sm" onClick={() => { setInviteUrl(null); setOpen(true) }}>
+            <UserPlus size={14} className="mr-1" /> Invite member
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="animate-spin text-text-faint" />
+            </div>
+          ) : (
+            <DataTable columns={columns} data={employees ?? []} />
+          )}
+        </CardContent>
+      </Card>
 
-      <DataTable columns={columns} data={users} />
+      {pending.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display text-base">Pending invitations</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {pending.map((i) => (
+              <div
+                key={i.id}
+                className="flex items-center justify-between rounded-lg border border-line px-3 py-2 text-sm"
+              >
+                <span className="text-text-strong">{i.email}</span>
+                <span className="text-xs text-text-faint">
+                  expires {new Date(i.expiresAt).toLocaleDateString()}
+                </span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
-      <p className="text-xs text-text-faint">
-        Permission changes apply instantly — the sidebar re-renders from the
-        same flags.
-      </p>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Invite a team member</DialogTitle>
+            <DialogDescription>
+              They'll get an email link to set their password and join.
+            </DialogDescription>
+          </DialogHeader>
 
-      <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} />
+          {inviteUrl ? (
+            <div className="space-y-3">
+              <p className="text-sm text-text-soft">
+                Invitation ready. Share this link if the email doesn't arrive:
+              </p>
+              <div className="flex items-center gap-2">
+                <Input readOnly value={inviteUrl} className="font-mono text-xs" />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    navigator.clipboard.writeText(inviteUrl)
+                    toast.success('Copied')
+                  }}
+                >
+                  <Copy size={14} />
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={sendInvite} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  required
+                  placeholder="teammate@company.com"
+                  value={form.email}
+                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Role</Label>
+                <Select
+                  value={form.roleId}
+                  onValueChange={(v) => setForm((f) => ({ ...f, roleId: v }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Choose role" /></SelectTrigger>
+                  <SelectContent>
+                    {(roles ?? []).map((r) => (
+                      <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={invite.isPending || !form.roleId}
+              >
+                {invite.isPending && <Loader2 size={14} className="mr-2 animate-spin" />}
+                Send invitation
+              </Button>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
