@@ -2,13 +2,19 @@ import { useMemo, useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import {
   Bot,
-  FileAudio,
-  FileText,
-  Headset,
+  Globe,
+  Loader2,
   PhoneIncoming,
   PhoneOutgoing,
 } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import {
   Select,
   SelectContent,
@@ -18,201 +24,180 @@ import {
 } from '@/components/ui/select'
 import { DataTable } from '@/components/common/DataTable'
 import { StatusPill } from '@/components/common/StatusPill'
-import { CallDetailSheet } from './CallDetailSheet'
-import { useApp } from '@/stores/app-store'
-import { fmtDateTime, fmtDur, inr } from '@/lib/format'
-import type { Call } from '@/types'
+import { useCall, useCalls, type CallRecord } from '@/lib/queries'
+import { fmtDateTime } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
-const OUTCOMES = ['Answered', 'Rejected', 'No Answer', 'Voicemail']
+const DIRECTION_ICON = {
+  inbound: PhoneIncoming,
+  outbound: PhoneOutgoing,
+  web: Globe,
+} as const
+
+function fmtDuration(sec: number) {
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
 
 export function CallsView() {
-  const session = useApp((s) => s.session)!
-  const allCalls = useApp((s) => s.calls)
-  const leads = useApp((s) => s.leads)
-  const agents = useApp((s) => s.agents)
-  const users = useApp((s) => s.users)
+  const [direction, setDirection] = useState<string>('all')
+  const filters = direction !== 'all' ? { direction } : undefined
+  const { data, isLoading } = useCalls(filters)
+  const calls = data?.items ?? []
+  const [openId, setOpenId] = useState<string | undefined>()
 
-  const [outcome, setOutcome] = useState('all')
-  const [agent, setAgent] = useState('all')
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
-  const [openCall, setOpenCall] = useState<Call | null>(null)
-
-  const visible =
-    session.role === 'sales_rep'
-      ? allCalls.filter((c) => c.repId === session.id)
-      : allCalls
-
-  const filtered = useMemo(
-    () =>
-      visible
-        .filter((c) => {
-          if (outcome !== 'all' && c.outcome !== outcome) return false
-          if (agent !== 'all' && c.agentId !== agent) return false
-          if (from && c.date.slice(0, 10) < from) return false
-          if (to && c.date.slice(0, 10) > to) return false
-          return true
-        })
-        .sort((a, b) => b.date.localeCompare(a.date)),
-    [visible, outcome, agent, from, to],
-  )
-
-  const columns = useMemo<ColumnDef<Call>[]>(
+  const columns = useMemo<ColumnDef<CallRecord>[]>(
     () => [
       {
-        id: 'lead',
-        header: 'Lead',
-        accessorFn: (c) => leads.find((l) => l.id === c.leadId)?.name ?? '',
-        cell: ({ getValue }) => (
-          <span className="font-medium text-text-strong">{getValue<string>()}</span>
-        ),
-      },
-      {
-        id: 'handler',
-        header: 'Handled by',
-        accessorFn: (c) => agents.find((a) => a.id === c.agentId)?.name ?? '',
-        cell: ({ row }) => {
-          const c = row.original
-          const flowAgent = agents.find((a) => a.id === c.agentId)
-          const rep = users.find((u) => u.id === c.repId)
+        header: 'Direction',
+        accessorKey: 'direction',
+        cell: ({ getValue }) => {
+          const dir = getValue<string>() as keyof typeof DIRECTION_ICON
+          const Icon = DIRECTION_ICON[dir] ?? Globe
           return (
-            <span className="flex items-center gap-1.5 text-text-soft">
-              {flowAgent ? (
-                <>
-                  <Bot size={13} className="text-brand-blue" />
-                  {flowAgent.name}
-                </>
-              ) : (
-                <>
-                  <Headset size={13} className="text-brand-cyan" />
-                  {rep?.name}
-                </>
-              )}
+            <span className="flex items-center gap-1.5 capitalize text-text-soft">
+              <Icon size={13} /> {dir}
             </span>
           )
         },
       },
       {
-        accessorKey: 'direction',
-        header: 'Direction',
-        cell: ({ row }) => (
-          <span className="flex items-center gap-1.5 text-text-faint">
-            {row.original.direction === 'inbound' ? (
-              <PhoneIncoming size={13} className="text-brand-cyan" />
-            ) : (
-              <PhoneOutgoing size={13} className="text-brand-blue" />
-            )}
-            {row.original.direction}
-          </span>
-        ),
+        header: 'Number',
+        accessorFn: (c) => c.toNumber || c.fromNumber || '—',
       },
       {
-        accessorKey: 'date',
-        header: 'When',
+        header: 'Status',
+        accessorKey: 'status',
         cell: ({ getValue }) => (
-          <span className="text-text-faint">{fmtDateTime(getValue<string>())}</span>
+          <StatusPill status={getValue<string>()}>
+            {getValue<string>().replaceAll('_', ' ')}
+          </StatusPill>
         ),
       },
       {
-        accessorKey: 'durationSec',
         header: 'Duration',
-        cell: ({ getValue }) => (
-          <span className="tabular-nums text-text-soft">
-            {fmtDur(getValue<number>())}
-          </span>
-        ),
+        accessorFn: (c) => fmtDuration(c.durationSeconds),
       },
       {
-        accessorKey: 'outcome',
-        header: 'Outcome',
-        cell: ({ getValue }) => (
-          <StatusPill status={getValue<string>()}>{getValue<string>()}</StatusPill>
-        ),
+        header: 'Disposition',
+        accessorFn: (c) => c.disposition ?? '—',
       },
       {
-        id: 'media',
-        header: 'Media',
-        enableSorting: false,
-        cell: ({ row }) => (
-          <span className="flex gap-2 text-text-faint">
-            {row.original.durationSec > 0 && <FileAudio size={14} />}
-            {row.original.transcript.length > 0 && <FileText size={14} />}
-          </span>
-        ),
-      },
-      {
-        id: 'cost',
-        header: 'Cost',
-        accessorFn: (c) => c.cost.total,
-        cell: ({ getValue }) => (
-          <span className="tabular-nums text-text-soft">
-            {inr(getValue<number>())}
-          </span>
-        ),
+        header: 'Started',
+        accessorFn: (c) => (c.startedAt ? fmtDateTime(c.startedAt) : '—'),
       },
     ],
-    [leads, agents, users],
+    [],
   )
 
   return (
-    <div className="space-y-6">
-      {/* filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Select value={outcome} onValueChange={setOutcome}>
-          <SelectTrigger className="w-36">
-            <SelectValue placeholder="Outcome" />
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Select value={direction} onValueChange={setDirection}>
+          <SelectTrigger className="h-9 w-40 text-xs">
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All outcomes</SelectItem>
-            {OUTCOMES.map((o) => (
-              <SelectItem key={o} value={o}>
-                {o}
-              </SelectItem>
-            ))}
+            <SelectItem value="all">All directions</SelectItem>
+            <SelectItem value="inbound">Inbound</SelectItem>
+            <SelectItem value="outbound">Outbound</SelectItem>
+            <SelectItem value="web">Web</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={agent} onValueChange={setAgent}>
-          <SelectTrigger className="w-44">
-            <SelectValue placeholder="Agent" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All agents</SelectItem>
-            {agents.map((a) => (
-              <SelectItem key={a.id} value={a.id}>
-                {a.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          type="date"
-          value={from}
-          onChange={(e) => setFrom(e.target.value)}
-          className="w-40"
-          aria-label="From date"
-        />
-        <span className="text-xs text-text-faint">to</span>
-        <Input
-          type="date"
-          value={to}
-          onChange={(e) => setTo(e.target.value)}
-          className="w-40"
-          aria-label="To date"
-        />
-        <span className="ml-auto text-xs text-text-faint">
-          {filtered.length} calls ·{' '}
-          {inr(filtered.reduce((a, c) => a + c.cost.total, 0))} total
-        </span>
+        <span className="text-xs text-text-faint">{data?.total ?? 0} calls</span>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={filtered}
-        onRowClick={setOpenCall}
-        emptyMessage="No calls match these filters."
-      />
+      {isLoading ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="animate-spin text-text-faint" />
+        </div>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={calls}
+          onRowClick={(row) => setOpenId(row.id)}
+        />
+      )}
 
-      <CallDetailSheet call={openCall} onClose={() => setOpenCall(null)} />
+      <CallDetailSheet callId={openId} onClose={() => setOpenId(undefined)} />
     </div>
+  )
+}
+
+function CallDetailSheet({
+  callId,
+  onClose,
+}: {
+  callId?: string
+  onClose: () => void
+}) {
+  const { data: call, isLoading } = useCall(callId)
+
+  return (
+    <Sheet open={!!callId} onOpenChange={(v) => !v && onClose()}>
+      <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+        <SheetHeader>
+          <SheetTitle className="font-display">Call transcript</SheetTitle>
+          <SheetDescription>
+            {call
+              ? `${call.direction} · ${fmtDuration(call.durationSeconds)} · ${call.status}`
+              : 'Loading…'}
+          </SheetDescription>
+        </SheetHeader>
+
+        {isLoading && (
+          <div className="flex justify-center py-10">
+            <Loader2 className="animate-spin text-text-faint" />
+          </div>
+        )}
+
+        {call && (
+          <div className="space-y-4 px-4 pb-6">
+            <div className="flex flex-wrap gap-1.5">
+              <Badge variant="outline" className="text-[10px]">
+                {call.provider}
+              </Badge>
+              {call.language && (
+                <Badge variant="outline" className="text-[10px] uppercase">
+                  {call.language}
+                </Badge>
+              )}
+              {call.isTest && (
+                <Badge variant="outline" className="border-brand-violet/40 text-[10px] text-brand-violet">
+                  test call
+                </Badge>
+              )}
+            </div>
+
+            <div className="space-y-2.5">
+              {(call.turns ?? []).map((t) => (
+                <div
+                  key={t.turnIndex}
+                  className={cn(
+                    'max-w-[90%] rounded-2xl px-3 py-2 text-xs leading-relaxed',
+                    t.role === 'agent'
+                      ? 'bg-surface-strong text-text-strong'
+                      : 'ml-auto bg-brand-blue/15 text-text-strong',
+                  )}
+                >
+                  <div className="mb-0.5 flex items-center gap-1 text-[9px] uppercase tracking-wide text-text-faint">
+                    {t.role === 'agent' && <Bot size={9} />}
+                    {t.role}
+                    {t.totalLatencyMs != null && ` · ${t.totalLatencyMs}ms`}
+                  </div>
+                  {t.text}
+                </div>
+              ))}
+              {(call.turns ?? []).length === 0 && (
+                <p className="py-6 text-center text-xs text-text-faint">
+                  No transcript captured for this call.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
   )
 }
