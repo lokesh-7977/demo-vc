@@ -10,9 +10,14 @@ import {
   UsersRound,
   Settings,
   AudioLines,
-  Pin,
-  PinOff,
+  PanelLeftClose,
+  PanelLeftOpen,
   LogOut,
+  Database,
+  Megaphone,
+  Globe,
+  Shield,
+  CreditCard,
   type LucideIcon,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -30,16 +35,18 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { StatusPill } from '@/components/common/StatusPill'
-import { useApp } from '@/stores/app-store'
+import { useAuth } from '@/stores/auth-store'
+import { useLogout } from '@/lib/queries'
+import { useHasPermission } from '@/lib/permissions'
 import { initials } from '@/lib/format'
-import type { Permission } from '@/types'
 import { cn } from '@/lib/utils'
 
 interface NavItem {
   icon: LucideIcon
   label: string
   to: string
-  perm: Permission
+  /** Permission required to see this item. If omitted, always shown. */
+  permission?: string
 }
 
 /* Salesforce-style grouped nav. Sections and items are filtered by
@@ -48,90 +55,111 @@ const NAV_SECTIONS: { section: string; items: NavItem[] }[] = [
   {
     section: 'Sales',
     items: [
-      { icon: LayoutDashboard, label: 'Dashboard', to: '/dashboard', perm: 'view_dashboard' },
-      { icon: Users, label: 'Leads', to: '/leads', perm: 'view_leads' },
-      { icon: Phone, label: 'Calls', to: '/calls', perm: 'view_calls' },
+      { icon: LayoutDashboard, label: 'Dashboard', to: '/dashboard' },
+      { icon: Users, label: 'Leads', to: '/leads', permission: 'leads.read' },
+      { icon: Phone, label: 'Calls', to: '/calls', permission: 'calls.read' },
+      { icon: Megaphone, label: 'Campaigns', to: '/campaigns', permission: 'campaigns.read' },
     ],
   },
   {
     section: 'Automation',
     items: [
-      { icon: Bot, label: 'Agents & Builder', to: '/builder', perm: 'manage_agents' },
-      { icon: Hash, label: 'Numbers & Import', to: '/numbers', perm: 'manage_numbers' },
+      { icon: Bot, label: 'Agents & Builder', to: '/builder', permission: 'agents.read' },
+      { icon: Hash, label: 'Numbers & Import', to: '/numbers', permission: 'integrations.read' },
+      { icon: Database, label: 'Knowledge Bases', to: '/knowledge-bases', permission: 'knowledge_bases.read' },
     ],
   },
   {
     section: 'Insights',
     items: [
-      { icon: BarChart3, label: 'Analytics', to: '/analytics', perm: 'view_analytics' },
+      { icon: BarChart3, label: 'Analytics', to: '/analytics', permission: 'usage.read' },
+    ],
+  },
+  {
+    section: 'Configuration',
+    items: [
+      { icon: Globe, label: 'Languages & Voices', to: '/languages-voices' },
     ],
   },
   {
     section: 'Admin',
     items: [
-      { icon: UsersRound, label: 'Team', to: '/team', perm: 'manage_team' },
-      { icon: Settings, label: 'Settings', to: '/settings', perm: 'manage_settings' },
+      { icon: UsersRound, label: 'Team', to: '/team', permission: 'users.read' },
+      { icon: Settings, label: 'Settings', to: '/settings', permission: 'organization.read' },
+      { icon: CreditCard, label: 'Billing', to: '/billing', permission: 'billing.read' },
     ],
   },
 ]
 
 export function Sidebar() {
-  const session = useApp((s) => s.session)
-  const logout = useApp((s) => s.logout)
+  const session = useAuth((s) => s.user)
+  const logout = useLogout()
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const can = useHasPermission()
 
-  const [pinned, setPinned] = useState(true)
-  const [hovered, setHovered] = useState(false)
-  const expanded = pinned || hovered
+  const [collapsed, setCollapsed] = useState(false)
+  const expanded = !collapsed
 
   if (!session) return null
 
-  const sections = NAV_SECTIONS.map((s) => ({
-    ...s,
-    items: s.items.filter((i) => session.permissions.includes(i.perm)),
-  })).filter((s) => s.items.length > 0)
+  // Filter sections and items by user permissions
+  const sections = NAV_SECTIONS
+    .map((sec) => ({
+      ...sec,
+      items: sec.items.filter((item) => !item.permission || can(item.permission)),
+    }))
+    .filter((sec) => sec.items.length > 0)
 
   return (
+    // In-flow rail: collapsing widens the main content (no overlay, no reflow on
+    // hover). Expand/collapse is an explicit click, never a hover.
     <aside
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       className={cn(
-        'relative z-30 flex h-svh shrink-0 flex-col border-r border-line bg-card transition-[width] duration-200 ease-out',
+        'relative z-30 flex h-svh shrink-0 flex-col border-r border-line bg-card shadow-sm shadow-black/5 transition-[width] duration-200 ease-out',
         expanded ? 'w-60' : 'w-16',
       )}
     >
-      {/* brand + pin */}
-      <div className="flex h-14 items-center gap-2.5 border-b border-line px-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-brand-blue/30 bg-linear-to-br from-brand-blue/15 to-brand-violet/15">
-          <AudioLines size={17} className="text-brand-blue" />
-        </span>
-        {expanded && (
+      {/* brand + collapse toggle */}
+      <div className={cn('flex h-14 items-center border-b border-line px-3', expanded ? 'gap-2.5' : 'justify-center')}>
+        {expanded ? (
           <>
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-blue text-white">
+              <AudioLines size={17} />
+            </span>
             <span className="font-display text-base font-semibold tracking-tight text-text-strong">
               Lokvera
             </span>
             <button
-              onClick={() => setPinned((p) => !p)}
-              aria-label={pinned ? 'Unpin sidebar' : 'Pin sidebar'}
+              onClick={() => setCollapsed(true)}
+              aria-label="Collapse sidebar"
               className="ml-auto rounded-md p-1.5 text-text-faint hover:bg-surface-strong hover:text-text-strong"
             >
-              {pinned ? <PinOff size={13} /> : <Pin size={13} />}
+              <PanelLeftClose size={16} />
             </button>
           </>
+        ) : (
+          <button
+            onClick={() => setCollapsed(false)}
+            aria-label="Expand sidebar"
+            title="Expand"
+            className="flex size-9 items-center justify-center rounded-xl text-text-faint hover:bg-surface-strong hover:text-text-strong"
+          >
+            <PanelLeftOpen size={18} />
+          </button>
         )}
       </div>
 
       {/* grouped nav */}
-      <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-3">
+      <nav className="flex-1 space-y-3 px-2 py-3">
         {sections.map((section) => (
           <div key={section.section}>
             {expanded ? (
-              <p className="px-3 pb-1.5 text-[10px] font-semibold tracking-[0.14em] text-text-faint uppercase">
+              <p className="px-3 pb-1 text-[10px] font-semibold tracking-[0.14em] text-text-faint uppercase">
                 {section.section}
               </p>
             ) : (
-              <div className="mx-3 mb-2 border-t border-line" />
+              <div className="mx-3 mb-1.5 border-t border-line" />
             )}
             <div className="space-y-0.5">
               {section.items.map((item) => {
@@ -140,17 +168,13 @@ export function Sidebar() {
                   <Link
                     to={item.to}
                     className={cn(
-                      'relative flex items-center gap-3 rounded-md px-3 py-2 text-[13px] font-medium transition-colors',
+                      'relative flex items-center gap-3 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors',
                       active
-                        ? 'bg-brand-blue/8 text-brand-blue'
-                        : 'text-text-soft hover:bg-surface-strong hover:text-text-strong',
+                        ? 'bg-brand-blue/10 text-brand-blue shadow-sm shadow-brand-blue/5'
+                        : 'text-text-soft hover:bg-surface hover:text-text-strong',
                       !expanded && 'justify-center px-0',
                     )}
                   >
-                    {/* Salesforce-style blue accent bar on active */}
-                    {active && (
-                      <span className="absolute inset-y-1 left-0 w-0.75 rounded-full bg-brand-blue" />
-                    )}
                     <item.icon size={17} className="shrink-0" strokeWidth={active ? 2.4 : 2} />
                     {expanded && <span className="truncate">{item.label}</span>}
                   </Link>
@@ -182,17 +206,17 @@ export function Sidebar() {
               )}
             >
               <Avatar className="size-8">
-                <AvatarFallback className="bg-linear-to-br from-brand-blue/20 to-brand-violet/20 font-display text-xs text-text-strong">
-                  {initials(session.name)}
+                <AvatarFallback className="bg-brand-blue/15 font-display text-xs font-semibold text-brand-blue">
+                  {initials(`${session.firstName} ${session.lastName}`)}
                 </AvatarFallback>
               </Avatar>
               {expanded && (
                 <>
                   <span className="min-w-0 flex-1 truncate text-left text-sm font-medium text-text-strong">
-                    {session.name}
+                    {session.firstName} {session.lastName}
                   </span>
-                  <StatusPill status={session.role}>
-                    {session.role === 'admin' ? 'Admin' : 'Rep'}
+                  <StatusPill status={session.role ?? 'member'}>
+                    {session.role ?? 'Member'}
                   </StatusPill>
                 </>
               )}
