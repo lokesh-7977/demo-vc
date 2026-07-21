@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowRight, AudioLines, Building2, LogIn } from 'lucide-react'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { AudioLines, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -11,59 +12,24 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { StatusPill } from '@/components/common/StatusPill'
 import { Waveform } from '@/components/common/Waveform'
-import { useApp } from '@/stores/app-store'
-import { initials } from '@/lib/format'
+import { useLogin } from '@/features/auth/auth.queries'
 
-/* Fake auth: both tabs resolve to picking a user from data.json and
-   setting them as the in-memory session. */
 export function LoginCard() {
-  const [orgName, setOrgName] = useState('')
-  const users = useApp((s) => s.users)
-  const login = useApp((s) => s.login)
   const navigate = useNavigate()
+  const login = useLogin()
 
-  const enter = (userId: string) => {
-    login(userId)
-    navigate({ to: '/dashboard' })
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' })
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      await login.mutateAsync(loginForm)
+      navigate({ to: '/dashboard' })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Login failed')
+    }
   }
-
-  const userList = (label: string) => (
-    <div className="space-y-3">
-      <p className="eyebrow">{label}</p>
-      <ul className="space-y-2">
-        {users.map((u) => (
-          <li key={u.id}>
-            <button
-              onClick={() => enter(u.id)}
-              className="glass-hover group flex w-full items-center gap-3 rounded-xl border border-line px-4 py-3 text-left"
-            >
-              <Avatar className="size-9">
-                <AvatarFallback className="bg-linear-to-br from-brand-blue/25 to-brand-violet/25 font-display text-sm text-text-strong">
-                  {initials(u.name)}
-                </AvatarFallback>
-              </Avatar>
-              <span className="flex-1">
-                <span className="block text-sm font-medium text-text-strong">
-                  {u.name}
-                </span>
-                <span className="block text-xs text-text-faint">{u.email}</span>
-              </span>
-              <StatusPill status={u.role}>
-                {u.role === 'admin' ? 'Admin' : 'Sales Rep'}
-              </StatusPill>
-              <ArrowRight
-                size={14}
-                className="text-text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-brand-blue"
-              />
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
 
   return (
     <div className="w-full max-w-md space-y-8">
@@ -83,46 +49,49 @@ export function LoginCard() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="font-display">Welcome</CardTitle>
-          <CardDescription>
-            Demo build — pick a user, no password needed.
-          </CardDescription>
+          <CardTitle className="font-display">Welcome back</CardTitle>
+          <CardDescription>Sign in to your organization.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="login">
-            <TabsList className="mb-4 grid w-full grid-cols-2">
-              <TabsTrigger value="login" className="gap-2">
-                <LogIn size={14} /> Login
-              </TabsTrigger>
-              <TabsTrigger value="create" className="gap-2">
-                <Building2 size={14} /> Create Organization
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="login">{userList('Sign in as')}</TabsContent>
-
-            <TabsContent value="create" className="space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="org-name">Organization name</Label>
-                <Input
-                  id="org-name"
-                  placeholder="Acme Motors Pvt Ltd"
-                  value={orgName}
-                  onChange={(e) => setOrgName(e.target.value)}
-                />
-                <p className="text-xs text-text-faint">
-                  Creating an organization signs you in as a demo user below.
-                </p>
-              </div>
-              {userList('Continue as')}
-            </TabsContent>
-          </Tabs>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="login-email">Email</Label>
+              <Input
+                id="login-email"
+                type="email"
+                required
+                autoComplete="email"
+                placeholder="you@company.com"
+                value={loginForm.email}
+                onChange={(e) =>
+                  setLoginForm((f) => ({ ...f, email: e.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="login-password">Password</Label>
+              <Input
+                id="login-password"
+                type="password"
+                required
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={loginForm.password}
+                onChange={(e) =>
+                  setLoginForm((f) => ({ ...f, password: e.target.value }))
+                }
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={login.isPending}>
+              {login.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+              Sign in
+            </Button>
+          </form>
+          <p className="mt-4 text-center text-xs text-text-soft">
+            Organizations are provisioned by your Lokvera administrator.
+          </p>
         </CardContent>
       </Card>
-
-      <p className="text-center text-xs text-text-faint">
-        Frontend demo · all data is local, nothing is sent anywhere
-      </p>
     </div>
   )
 }
