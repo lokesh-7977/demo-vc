@@ -28,7 +28,7 @@ export function Waveform({
             'w-[3px] rounded-full',
             live
               ? 'wave-bar'
-              : 'bg-linear-to-b from-brand-cyan/70 to-brand-blue/70',
+              : 'bg-linear-to-b from-brand-cyan to-brand-blue opacity-60 dark:opacity-40',
           )}
           style={{
             height: `${STATIC_HEIGHTS[i % STATIC_HEIGHTS.length] * 100}%`,
